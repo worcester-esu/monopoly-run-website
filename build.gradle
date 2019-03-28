@@ -1,0 +1,52 @@
+buildscript	{
+	repositories {
+		jcenter()
+	}
+
+	dependencies {
+		classpath 'me.champeau.gradle:jbake-gradle-plugin:0.2'
+		classpath 'org.jbake:jbake-core:2.4.0'
+		classpath 'org.pegdown:pegdown:1.6.0'
+		classpath 'org.freemarker:freemarker:2.3.25-incubating'
+		classpath 'org.hidetake:gradle-ssh-plugin:2.4.1'
+	}
+}
+
+apply plugin: 'base'
+apply plugin: 'me.champeau.jbake'
+apply plugin: 'org.hidetake.ssh'
+
+group = 'run.worcestermonopoly'
+
+remotes {
+	webServer {
+		host = project.findProperty("run.worcestermonopoly.deploy.host")
+		user = project.findProperty("run.worcestermonopoly.deploy.user")
+		password = project.findProperty("run.worcestermonopoly.deploy.password")
+	}
+}
+
+task zip(type: Zip) {
+	from "${buildDir}/jbake/"
+	archiveName 'web.zip'
+	destinationDir(file("${buildDir}/deploy/"))
+}
+
+task deploy << {
+	ssh.run {
+		session(remotes.webServer) {
+			def deployDir = project.findProperty("run.worcestermonopoly.deploy.location")
+			def tempDeployDir = project.findProperty("run.worcestermonopoly.deploy.temp")
+			put from: "${buildDir}/deploy/", into: tempDeployDir
+			execute "unzip ${tempDeployDir}/deploy/web.zip -d ${tempDeployDir}/extracted/"
+			execute "rm --preserve-root -Rf ${deployDir}/*", ignoreError: true
+			execute "mv ${tempDeployDir}/extracted/* ${deployDir}/"
+			execute "rm --preserve-root -Rf ${tempDeployDir}/*", ignoreError: true
+		}
+	}
+}
+
+zip.dependsOn jbake
+assemble.dependsOn zip
+deploy.dependsOn build
+
